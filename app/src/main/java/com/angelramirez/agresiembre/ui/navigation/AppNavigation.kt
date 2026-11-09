@@ -1,9 +1,11 @@
 package com.angelramirez.agresiembre.ui.navigation
 
 import androidx.compose.runtime.Composable
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
 import com.angelramirez.agresiembre.ui.screens.*
 
 @Composable
@@ -47,6 +49,12 @@ fun AppNavigation() {
             HomeScreen(
                 onNavigateToRecommendations = {
                     navController.navigate(Screen.Recommendations.route)
+                },
+                onNavigateToParcels = {
+                    navController.navigate(Screen.Parcels.route)
+                },
+                onNavigateToGuides = {
+                    navController.navigate(Screen.SavedGuides.route)
                 }
             )
         }
@@ -58,9 +66,58 @@ fun AppNavigation() {
                         popUpTo(Screen.Home.route) { inclusive = true }
                     }
                 },
+                onNavigateToParcels = {
+                    navController.navigate(Screen.Parcels.route)
+                },
+                onNavigateToGuides = {
+                    navController.navigate(Screen.SavedGuides.route)
+                },
                 onNavigateToDetail = { cropId ->
-                    // Dejado listo para conectar con la futura Ficha Técnica de Cultivo
+                    navController.navigate(Screen.CropDetail.createRoute(cropId))
                 }
+            )
+        }
+
+        composable(Screen.SavedGuides.route) {
+            SavedGuidesScreen(
+                onNavigateToHome = {
+                    navController.navigate(Screen.Home.route) {
+                        popUpTo(Screen.Home.route) { inclusive = true }
+                    }
+                },
+                onNavigateToRecommendations = {
+                    navController.navigate(Screen.Recommendations.route)
+                },
+                onNavigateToParcels = {
+                    navController.navigate(Screen.Parcels.route)
+                }
+            )
+        }
+
+        composable(Screen.Parcels.route) {
+            ParcelsScreen(
+                onNavigateToHome = {
+                    navController.navigate(Screen.Home.route) {
+                        popUpTo(Screen.Home.route) { inclusive = true }
+                    }
+                },
+                onNavigateToRecommendations = {
+                    navController.navigate(Screen.Recommendations.route)
+                },
+                onNavigateToGuides = {
+                    navController.navigate(Screen.SavedGuides.route)
+                }
+            )
+        }
+
+        composable(
+            route = Screen.CropDetail.route,
+            arguments = listOf(navArgument("cropId") { type = NavType.StringType })
+        ) { backStackEntry ->
+            val cropId = backStackEntry.arguments?.getString("cropId") ?: "1"
+            CropDetailScreen(
+                cropId = cropId,
+                onNavigateBack = { navController.popBackStack() }
             )
         }
     }

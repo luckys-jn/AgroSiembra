@@ -12,5 +12,6 @@ data class Crop(
     val minAltitud: Int = 0,
     val maxAltitud: Int = 4000,
     val minPh: Float = 4.0f,
-    val maxPh: Float = 9.0f
+    val maxPh: Float = 9.0f,
+    val compatibleSoils: List<String> = listOf("Franco", "Arcilloso", "Arenoso", "Limoso", "Mixto / Franco")
 )

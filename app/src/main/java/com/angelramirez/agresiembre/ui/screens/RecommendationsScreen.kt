@@ -19,35 +19,103 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.angelramirez.agresiembre.data.Crop
+import com.angelramirez.agresiembre.data.ParcelManager
 import com.angelramirez.agresiembre.ui.theme.*
-import kotlin.collections.filter
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RecommendationsScreen(
-    altitudIngresada: Int = 1420,
-    phIngresado: Float = 6.5f,
     onNavigateToHome: () -> Unit = {},
+    onNavigateToParcels: () -> Unit = {},
+    onNavigateToGuides: () -> Unit = {},
     onNavigateToDetail: (String) -> Unit = {}
 ) {
-    var selectedTab by remember { mutableIntStateOf(0) } // 0: Individuales, 1: Asociación
+    var selectedTab by remember { mutableIntStateOf(0) }
 
-    // Catálogo/Biblioteca de cultivos con rangos agronómicos de altitud y pH
+    // Obtiene los datos de la Parcela Activa
+    val activeParcel = ParcelManager.selectedParcel
+    val altitudIngresada = activeParcel.altitude.toDoubleOrNull()?.toInt() ?: 0
+    val phIngresado = activeParcel.ph.toFloatOrNull() ?: 6.5f
+    val sueloIngresado = activeParcel.soilType
+
+    // Catálogo con requerimientos agronómicos reales (Altitud, pH y Suelo)
     val catalogCrops = remember {
         listOf(
-            Crop("1", "Maíz Criollo Amarillo", "Zea mays • Variedad rústica nativa", 0, "3-4 meses", "Media (600mm)", "Suelo Franco", "Alta tolerancia a vientos. Excelente tutor vertical para asociaciones con leguminosas.", minAltitud = 0, maxAltitud = 2200, minPh = 5.5f, maxPh = 7.5f),
-            Crop("2", "Frijol Arbustivo Rojo", "Phaseolus vulgaris • Crecimiento determinado", 0, "2.5 meses", "Baja-Media", "Fija Nitrógeno", "Aporta hasta 40kg N/ha al suelo. Ciclo biológico acelerado ideal para rotaciones.", minAltitud = 500, maxAltitud = 2500, minPh = 6.0f, maxPh = 7.5f),
-            Crop("3", "Calabaza / Zapallo", "Cucurbita pepo • Rastrera tradicional", 0, "3 meses", "Media", "Cobertura viva", "Su follaje denso sombrea el suelo previniendo la evaporación hídrica y malezas.", minAltitud = 0, maxAltitud = 2000, minPh = 5.5f, maxPh = 7.0f),
-            Crop("4", "Tomate Chonto", "Solanum lycopersicum • Semideterminado", 0, "3.5 meses", "Alta", "Suelo Franco", "Gran demanda local. Requiere tutorado e inspección de humedad constante.", minAltitud = 800, maxAltitud = 2000, minPh = 6.0f, maxPh = 6.8f),
-            Crop("5", "Papa Sabanera", "Solanum tuberosum • Variedad de clima frío", 0, "5 meses", "Alta", "Suelo Suelto", "Cultivo rústico adaptado a tierras altas y temperaturas bajas.", minAltitud = 2000, maxAltitud = 3200, minPh = 5.0f, maxPh = 6.5f)
+            Crop(
+                id = "1",
+                name = "Maíz Criollo Amarillo",
+                scientificName = "Zea mays • Variedad rústica nativa",
+                harvestTime = "3-4 meses",
+                waterNeed = "Media (600mm)",
+                soilSuitability = "Franco / Mixto",
+                description = "Alta tolerancia a vientos. Excelente tutor vertical para asociaciones con leguminosas.",
+                minAltitud = 0, maxAltitud = 2200, minPh = 5.5f, maxPh = 7.5f,
+                compatibleSoils = listOf("Franco", "Mixto / Franco", "Limoso")
+            ),
+            Crop(
+                id = "2",
+                name = "Frijol Arbustivo Rojo",
+                scientificName = "Phaseolus vulgaris • Crecimiento determinado",
+                harvestTime = "2.5 meses",
+                waterNeed = "Baja-Media",
+                soilSuitability = "Fija Nitrógeno",
+                description = "Aporta hasta 40kg N/ha al suelo. Ciclo biológico acelerado ideal para rotaciones.",
+                minAltitud = 500, maxAltitud = 2500, minPh = 6.0f, maxPh = 7.5f,
+                compatibleSoils = listOf("Franco", "Mixto / Franco", "Arenoso")
+            ),
+            Crop(
+                id = "3",
+                name = "Calabaza / Zapallo",
+                scientificName = "Cucurbita pepo • Rastrera tradicional",
+                harvestTime = "3 meses",
+                waterNeed = "Media",
+                soilSuitability = "Cobertura viva",
+                description = "Su follaje denso sombrea el suelo previniendo la evaporación hídrica y malezas.",
+                minAltitud = 0, maxAltitud = 2000, minPh = 5.5f, maxPh = 7.0f,
+                compatibleSoils = listOf("Franco", "Mixto / Franco", "Arcilloso")
+            ),
+            Crop(
+                id = "4",
+                name = "Tomate Chonto",
+                scientificName = "Solanum lycopersicum • Semideterminado",
+                harvestTime = "3.5 meses",
+                waterNeed = "Alta",
+                soilSuitability = "Suelo Franco",
+                description = "Gran demanda local. Requiere tutorado e inspección de humedad constante.",
+                minAltitud = 800, maxAltitud = 2000, minPh = 6.0f, maxPh = 6.8f,
+                compatibleSoils = listOf("Franco", "Mixto / Franco")
+            ),
+            Crop(
+                id = "5",
+                name = "Papa Sabanera",
+                scientificName = "Solanum tuberosum • Variedad de clima frío",
+                harvestTime = "5 meses",
+                waterNeed = "Alta",
+                soilSuitability = "Suelo Suelto",
+                description = "Cultivo rústico adaptado a tierras altas y temperaturas bajas.",
+                minAltitud = 2000, maxAltitud = 3200, minPh = 5.0f, maxPh = 6.5f,
+                compatibleSoils = listOf("Arenoso", "Franco", "Mixto / Franco")
+            )
         )
     }
 
-    // Filtrado automático según datos calibrados en la pantalla de Inicio
-    val cultivosFiltrados = remember(altitudIngresada, phIngresado) {
-        catalogCrops.filter { crop ->
-            altitudIngresada in crop.minAltitud..crop.maxAltitud && phIngresado in crop.minPh..crop.maxPh
+    // Filtrado automático triple (Altitud + pH + Tipo de suelo)
+    val cultivosFiltrados = remember(altitudIngresada, phIngresado, sueloIngresado) {
+        if (altitudIngresada == 0) {
+            catalogCrops
+        } else {
+            catalogCrops.filter { crop ->
+                altitudIngresada in crop.minAltitud..crop.maxAltitud &&
+                        phIngresado in crop.minPh..crop.maxPh &&
+                        (sueloIngresado.isEmpty() || crop.compatibleSoils.contains(sueloIngresado))
+            }
         }
+    }
+
+    // Evaluación del filtro para la Milpa (Maíz + Frijol + Calabaza)
+    val milpaEsApta = remember(altitudIngresada, phIngresado) {
+        if (altitudIngresada == 0) true
+        else (altitudIngresada in 0..2200) && (phIngresado in 5.5f..7.5f)
     }
 
     Scaffold(
@@ -67,13 +135,13 @@ fun RecommendationsScreen(
                 )
                 NavigationBarItem(
                     selected = false,
-                    onClick = { },
+                    onClick = onNavigateToParcels,
                     icon = { Icon(Icons.Default.GridView, contentDescription = null) },
                     label = { Text("Parcelas") }
                 )
                 NavigationBarItem(
                     selected = false,
-                    onClick = { },
+                    onClick = onNavigateToGuides,
                     icon = { Icon(Icons.Default.Book, contentDescription = null) },
                     label = { Text("Guías") }
                 )
@@ -96,7 +164,7 @@ fun RecommendationsScreen(
             ) {
                 Column {
                     Text("🌱 AgroSiembra", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = TextDark)
-                    Text("Biblioteca de Recomendaciones", fontSize = 12.sp, color = TextSecondary)
+                    Text("Recomendaciones", fontSize = 12.sp, color = TextSecondary)
                 }
                 Surface(shape = RoundedCornerShape(50), color = GreenChipBg) {
                     Text("👤", modifier = Modifier.padding(6.dp))
@@ -105,7 +173,7 @@ fun RecommendationsScreen(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Chip Informativo del terreno calibrado
+            // Chip Informativo de la Parcela Activa
             Surface(
                 shape = RoundedCornerShape(12.dp),
                 color = Color.White,
@@ -117,31 +185,25 @@ fun RecommendationsScreen(
                 ) {
                     Icon(Icons.Default.FilterAlt, contentDescription = null, tint = GreenPrimary, modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("Filtro: $altitudIngresada msnm | pH $phIngresado", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = TextDark)
+                    Text(
+                        text = "Filtro [${activeParcel.name}]: ${if (altitudIngresada == 0) "Sin calibrar" else "$altitudIngresada msnm"} | pH $phIngresado | $sueloIngresado",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 11.sp,
+                        color = TextDark
+                    )
                 }
             }
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Tabs Individual vs Policultivo
             Surface(
                 shape = RoundedCornerShape(14.dp),
                 color = GreenChipBg,
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Row(modifier = Modifier.padding(4.dp)) {
-                    TabButton(
-                        text = "Cultivos Aptos",
-                        isSelected = selectedTab == 0,
-                        modifier = Modifier.weight(1f),
-                        onClick = { selectedTab = 0 }
-                    )
-                    TabButton(
-                        text = "Asociación / Policultivo",
-                        isSelected = selectedTab == 1,
-                        modifier = Modifier.weight(1f),
-                        onClick = { selectedTab = 1 }
-                    )
+                    TabButton(text = "Cultivos Aptos", isSelected = selectedTab == 0, modifier = Modifier.weight(1f), onClick = { selectedTab = 0 })
+                    TabButton(text = "Asociación / Policultivo", isSelected = selectedTab == 1, modifier = Modifier.weight(1f), onClick = { selectedTab = 1 })
                 }
             }
 
@@ -150,7 +212,7 @@ fun RecommendationsScreen(
             if (selectedTab == 0) {
                 if (cultivosFiltrados.isEmpty()) {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text("No hay cultivos en la biblioteca para esa altitud/pH.", color = TextSecondary, fontSize = 13.sp)
+                        Text("No hay cultivos aptos para esa combinación de altitud, pH y tipo de suelo.", color = TextSecondary, fontSize = 13.sp)
                     }
                 } else {
                     LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -162,7 +224,11 @@ fun RecommendationsScreen(
             } else {
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     item {
-                        AssociationSimulatorCard(onNavigateToDetail = onNavigateToDetail)
+                        AssociationSimulatorCard(
+                            isApta = milpaEsApta,
+                            altitudActual = altitudIngresada,
+                            onNavigateToDetail = onNavigateToDetail
+                        )
                     }
                 }
             }
@@ -178,12 +244,7 @@ fun TabButton(text: String, isSelected: Boolean, modifier: Modifier = Modifier, 
         modifier = modifier.clickable { onClick() }
     ) {
         Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(vertical = 10.dp)) {
-            Text(
-                text = text,
-                fontSize = 12.sp,
-                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                color = if (isSelected) GreenPrimary else TextSecondary
-            )
+            Text(text = text, fontSize = 12.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal, color = if (isSelected) GreenPrimary else TextSecondary)
         }
     }
 }
@@ -196,17 +257,8 @@ fun CropCardItem(crop: Crop, phActual: Float, onNavigateToDetail: (String) -> Un
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column {
-                    Text(crop.name, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = TextDark)
-                    Text(crop.scientificName, fontSize = 11.sp, color = TextSecondary)
-                }
-            }
-
+            Text(crop.name, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = TextDark)
+            Text(crop.scientificName, fontSize = 11.sp, color = TextSecondary)
             Spacer(modifier = Modifier.height(12.dp))
 
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -216,9 +268,7 @@ fun CropCardItem(crop: Crop, phActual: Float, onNavigateToDetail: (String) -> Un
             }
 
             Spacer(modifier = Modifier.height(10.dp))
-
             Text(crop.description, fontSize = 12.sp, color = TextSecondary)
-
             Spacer(modifier = Modifier.height(12.dp))
 
             Button(
@@ -246,7 +296,11 @@ fun InfoBadge(title: String, value: String, modifier: Modifier = Modifier) {
 }
 
 @Composable
-fun AssociationSimulatorCard(onNavigateToDetail: (String) -> Unit) {
+fun AssociationSimulatorCard(
+    isApta: Boolean,
+    altitudActual: Int,
+    onNavigateToDetail: (String) -> Unit
+) {
     Card(
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White),
@@ -264,9 +318,6 @@ fun AssociationSimulatorCard(onNavigateToDetail: (String) -> Unit) {
 
             Spacer(modifier = Modifier.height(14.dp))
 
-            Text("Cultivos integrantes:", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-            Spacer(modifier = Modifier.height(8.dp))
-
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 GuildChip("🌽 Maíz\nSoporte/Tutor", modifier = Modifier.weight(1f))
                 GuildChip("🫘 Frijol\nFijador de N", modifier = Modifier.weight(1f))
@@ -275,12 +326,26 @@ fun AssociationSimulatorCard(onNavigateToDetail: (String) -> Unit) {
 
             Spacer(modifier = Modifier.height(14.dp))
 
-            Surface(shape = RoundedCornerShape(12.dp), color = GreenLightBg, modifier = Modifier.fillMaxWidth()) {
+            // Estado de aptitud agronómica de la Milpa
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = if (isApta) GreenLightBg else Color(0xFFFFEBEE),
+                modifier = Modifier.fillMaxWidth()
+            ) {
                 Column(modifier = Modifier.padding(12.dp)) {
-                    Text("💡 Relación Agronómica", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = TextDark)
+                    Text(
+                        text = if (isApta) "💡 Relación Agronómica Óptima" else "⚠️ Policultivo No Recomendado",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 12.sp,
+                        color = if (isApta) TextDark else Color.Red
+                    )
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        "El frijol fija nitrógeno que nutre al maíz, el maíz sirve de tutor natural, y las hojas de la calabaza cubren el suelo reteniendo humedad.",
+                        text = if (isApta) {
+                            "El frijol fija nitrógeno que nutre al maíz, el maíz sirve de tutor natural, y las hojas de la calabaza cubren el suelo reteniendo humedad."
+                        } else {
+                            "La Milpa requiere un clima cálido-templado (< 2200 msnm). Tu altitud actual ($altitudActual msnm) es muy elevada para el desarrollo del maíz y la calabaza."
+                        },
                         fontSize = 11.sp,
                         color = TextSecondary
                     )
@@ -291,13 +356,21 @@ fun AssociationSimulatorCard(onNavigateToDetail: (String) -> Unit) {
 
             Button(
                 onClick = { onNavigateToDetail("milpa") },
+                enabled = isApta,
                 modifier = Modifier.fillMaxWidth().height(48.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = GreenPrimary),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = GreenPrimary,
+                    disabledContainerColor = Color.LightGray
+                ),
                 shape = RoundedCornerShape(12.dp)
             ) {
                 Icon(Icons.Default.FormatListBulleted, contentDescription = null)
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("Ver plan de siembra combinada (Milpa)", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                Text(
+                    text = if (isApta) "Ver plan de siembra combinada (Milpa)" else "No apto para esta altitud",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 13.sp
+                )
             }
         }
     }

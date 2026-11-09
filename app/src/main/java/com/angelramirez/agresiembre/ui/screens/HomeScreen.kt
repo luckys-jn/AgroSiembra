@@ -5,6 +5,7 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
 import android.location.Location
+import android.location.LocationManager
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -31,6 +32,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import com.angelramirez.agresiembre.data.ParcelManager
 import com.angelramirez.agresiembre.ui.theme.*
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
@@ -40,33 +42,43 @@ import kotlin.math.roundToInt
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
-    onNavigateToRecommendations: () -> Unit = {}
+    onNavigateToRecommendations: () -> Unit = {},
+    onNavigateToParcels: () -> Unit = {},
+    onNavigateToGuides: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val fusedLocationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
+    val activeParcel = ParcelManager.selectedParcel
 
-    var latitud by remember { mutableStateOf("") }
-    var longitud by remember { mutableStateOf("") }
-    var altitud by remember { mutableStateOf("") }
-    var climaCalculado by remember { mutableStateOf("Pendiente de calibrar") }
-    var precisionGps by remember { mutableStateOf("Desconectado") }
-    var gpsActivo by remember { mutableStateOf(false) }
+    // Mantiene el estado en la memoria global de la parcela seleccionada
+    var latitud by remember(activeParcel.id) { mutableStateOf(activeParcel.latitude) }
+    var longitud by remember(activeParcel.id) { mutableStateOf(activeParcel.longitude) }
+    var altitud by remember(activeParcel.id) { mutableStateOf(activeParcel.altitude) }
+    var climaCalculado by remember(activeParcel.id, altitud) {
+        mutableStateOf(determinarClimaPorAltitud(altitud.toDoubleOrNull() ?: 0.0))
+    }
+    var gpsActivo by remember(activeParcel.id) { mutableStateOf(activeParcel.isGpsActive) }
     var cargandoGps by remember { mutableStateOf(false) }
 
-    var areaDisponible by remember { mutableStateOf("") }
-    var esHectareas by remember { mutableStateOf(false) }
-    var tempPromedio by remember { mutableStateOf("") }
+    var areaDisponible by remember(activeParcel.id) { mutableStateOf(activeParcel.area) }
+    var tempPromedio by remember { mutableStateOf("22") }
 
     var modoTecnicoActivo by remember { mutableStateOf(true) }
-    var phSuelo by remember { mutableFloatStateOf(6.5f) }
-    var texturaSeleccionada by remember { mutableStateOf("Mixto / Franco") }
-    var humedadRelativa by remember { mutableStateOf("70%") }
-    var drenajeSeleccionado by remember { mutableStateOf("Bueno") }
+    var phSuelo by remember(activeParcel.id) { mutableFloatStateOf(activeParcel.ph.toFloatOrNull() ?: 6.5f) }
+    var texturaSeleccionada by remember(activeParcel.id) { mutableStateOf(activeParcel.soilType) }
 
-    val permissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission()
-    ) { isGranted ->
-        if (isGranted) {
+    // Función auxiliar para activar GPS
+    val solicitarUbicacion = {
+        val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+        val isGpsEnabled = locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER) ||
+                locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
+
+        if (!isGpsEnabled) {
+            Toast.makeText(context, "⚠️ Redirigiendo para encender el GPS...", Toast.LENGTH_SHORT).show()
+            // Abre automáticamente el panel de encendido de Ubicación en el celular
+            val intent = android.content.Intent(android.provider.Settings.ACTION_LOCATION_SOURCE_SETTINGS)
+            context.startActivity(intent)
+        } else {
             cargandoGps = true
             obtenerUbicacionGPSReal(context, fusedLocationClient) { loc ->
                 cargandoGps = false
@@ -77,12 +89,28 @@ fun HomeScreen(
                         altitud = loc.altitude.roundToInt().toString()
                     }
                     gpsActivo = true
-                    precisionGps = "±3 metros"
                     climaCalculado = determinarClimaPorAltitud(altitud.toDoubleOrNull() ?: 0.0)
+
+                    // Sincroniza globalmente con la parcela activa
+                    ParcelManager.updateActiveParcelData(
+                        altitude = altitud,
+                        lat = latitud,
+                        lng = longitud,
+                        gpsActive = true
+                    )
+                    Toast.makeText(context, "📍 Ubicación detectada con éxito", Toast.LENGTH_SHORT).show()
                 } else {
-                    Toast.makeText(context, "Asegúrate de tener el GPS activo en tu teléfono", Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, "No se logró señal GPS. Intenta al aire libre.", Toast.LENGTH_SHORT).show()
                 }
             }
+        }
+    }
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            solicitarUbicacion()
         } else {
             Toast.makeText(context, "Permiso de ubicación denegado", Toast.LENGTH_SHORT).show()
         }
@@ -105,13 +133,13 @@ fun HomeScreen(
                 )
                 NavigationBarItem(
                     selected = false,
-                    onClick = { },
+                    onClick = onNavigateToParcels,
                     icon = { Icon(Icons.Default.GridView, contentDescription = null) },
                     label = { Text("Parcelas") }
                 )
                 NavigationBarItem(
                     selected = false,
-                    onClick = { },
+                    onClick = onNavigateToGuides,
                     icon = { Icon(Icons.Default.Book, contentDescription = null) },
                     label = { Text("Guías") }
                 )
@@ -146,7 +174,26 @@ fun HomeScreen(
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text("¡Hola, Agricultor!", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = TextDark)
-                    Text("Listo para calibrar tu siembra", fontSize = 13.sp, color = TextSecondary)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = GreenChipBg,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onNavigateToParcels() }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column {
+                                Text("Parcela Activa:", fontSize = 10.sp, color = TextSecondary)
+                                Text(activeParcel.name, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = TextDark)
+                            }
+                            Icon(Icons.Default.SwapHoriz, contentDescription = "Cambiar", tint = GreenPrimary)
+                        }
+                    }
                 }
             }
 
@@ -163,19 +210,9 @@ fun HomeScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.MyLocation, contentDescription = null, tint = GreenPrimary)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Ubicación y Clima", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = TextDark)
-                        }
+                        Text("Ubicación y Clima", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = TextDark)
                         Surface(shape = RoundedCornerShape(8.dp), color = GreenChipBg) {
-                            Text(
-                                text = if (gpsActivo) "Sincronizado" else "Manual",
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                fontSize = 11.sp,
-                                color = GreenDark,
-                                fontWeight = FontWeight.Bold
-                            )
+                            Text(if (gpsActivo) "Sincronizado" else "Manual", modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp), fontSize = 11.sp, color = GreenDark, fontWeight = FontWeight.Bold)
                         }
                     }
 
@@ -183,28 +220,9 @@ fun HomeScreen(
 
                     Button(
                         onClick = {
-                            val hasPermission = ContextCompat.checkSelfPermission(
-                                context,
-                                Manifest.permission.ACCESS_FINE_LOCATION
-                            ) == PackageManager.PERMISSION_GRANTED
-
+                            val hasPermission = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
                             if (hasPermission) {
-                                cargandoGps = true
-                                obtenerUbicacionGPSReal(context, fusedLocationClient) { loc ->
-                                    cargandoGps = false
-                                    if (loc != null) {
-                                        latitud = String.format("%.4f", loc.latitude)
-                                        longitud = String.format("%.4f", loc.longitude)
-                                        if (loc.hasAltitude()) {
-                                            altitud = loc.altitude.roundToInt().toString()
-                                        }
-                                        gpsActivo = true
-                                        precisionGps = "±3 metros"
-                                        climaCalculado = determinarClimaPorAltitud(altitud.toDoubleOrNull() ?: 0.0)
-                                    } else {
-                                        Toast.makeText(context, "Activa la Ubicación/GPS de tu teléfono e intenta nuevamente", Toast.LENGTH_LONG).show()
-                                    }
-                                }
+                                solicitarUbicacion()
                             } else {
                                 permissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
                             }
@@ -217,37 +235,21 @@ fun HomeScreen(
                         if (cargandoGps) {
                             CircularProgressIndicator(color = Color.White, modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("Obteniendo señal GPS...", fontWeight = FontWeight.Bold)
+                            Text("Buscando GPS...", fontWeight = FontWeight.Bold)
                         } else {
                             Icon(Icons.Default.GpsFixed, contentDescription = null)
                             Spacer(modifier = Modifier.width(8.dp))
-                            Column {
-                                Text("Detectar mi ubicación actual (GPS)", fontWeight = FontWeight.Bold)
-                                Text("Precisión estimada: $precisionGps", fontSize = 11.sp)
-                            }
+                            Text("Detectar mi ubicación actual (GPS)", fontWeight = FontWeight.Bold)
                         }
                     }
 
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = GreenLightBg,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
+                    Surface(shape = RoundedCornerShape(8.dp), color = GreenLightBg, modifier = Modifier.fillMaxWidth()) {
                         Column(modifier = Modifier.padding(12.dp)) {
-                            Text(
-                                text = if (latitud.isEmpty()) "📍 Coordenadas sin detectar" else "📍 Lat $latitud° N, Long $longitud° W",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = TextDark
-                            )
+                            Text(if (latitud.isEmpty()) "📍 Coordenadas sin detectar" else "📍 Lat $latitud° N, Long $longitud° W", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextDark)
                             Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = "Altitud: ${if (altitud.isEmpty()) "--" else altitud} msnm | Clima: $climaCalculado",
-                                fontSize = 12.sp,
-                                color = TextSecondary
-                            )
+                            Text("Altitud: ${if (altitud.isEmpty()) "--" else altitud} msnm | Clima: $climaCalculado", fontSize = 12.sp, color = TextSecondary)
                         }
                     }
                 }
@@ -262,18 +264,20 @@ fun HomeScreen(
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text("📐 Dimensiones y Clima Base", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = TextDark)
-
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    Text("Área del lote disponible", fontSize = 13.sp, color = TextDark)
+                    Text("Área del lote", fontSize = 13.sp, color = TextDark)
                     OutlinedTextField(
                         value = areaDisponible,
-                        onValueChange = { areaDisponible = it },
+                        onValueChange = {
+                            areaDisponible = it
+                            ParcelManager.updateActiveParcelData(area = it)
+                        },
                         placeholder = { Text("Ej: 2.5") },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(10.dp),
-                        suffix = { Text(if (esHectareas) "ha" else "m²") }
+                        suffix = { Text("ha") }
                     )
 
                     Spacer(modifier = Modifier.height(12.dp))
@@ -286,6 +290,7 @@ fun HomeScreen(
                                 onValueChange = {
                                     altitud = it
                                     climaCalculado = determinarClimaPorAltitud(it.toDoubleOrNull() ?: 0.0)
+                                    ParcelManager.updateActiveParcelData(altitude = it)
                                 },
                                 placeholder = { Text("Ej: 1420") },
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -321,63 +326,44 @@ fun HomeScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column {
-                            Text("🧪 Modo Técnico / Avanzado", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = TextDark)
-                            Text("Calibración edafológica del suelo", fontSize = 12.sp, color = TextSecondary)
-                        }
-                        Switch(
-                            checked = modoTecnicoActivo,
-                            onCheckedChange = { modoTecnicoActivo = it },
-                            colors = SwitchDefaults.colors(checkedThumbColor = GreenPrimary)
-                        )
+                        Text("🧪 Modo Técnico", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = TextDark)
+                        Switch(checked = modoTecnicoActivo, onCheckedChange = { modoTecnicoActivo = it }, colors = SwitchDefaults.colors(checkedThumbColor = GreenPrimary))
                     }
 
                     AnimatedVisibility(visible = modoTecnicoActivo) {
                         Column(modifier = Modifier.padding(top = 16.dp)) {
                             Divider()
                             Spacer(modifier = Modifier.height(12.dp))
-
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                 Text("🌱 pH del Suelo", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
                                 Text("${String.format("%.1f", phSuelo)} pH", fontWeight = FontWeight.Bold, color = GreenPrimary)
                             }
-
                             Slider(
                                 value = phSuelo,
-                                onValueChange = { phSuelo = it },
+                                onValueChange = {
+                                    phSuelo = it
+                                    ParcelManager.updateActiveParcelData(ph = String.format("%.1f", it))
+                                },
                                 valueRange = 4.0f..9.0f,
                                 steps = 50,
                                 colors = SliderDefaults.colors(thumbColor = GreenPrimary, activeTrackColor = GreenPrimary)
                             )
 
                             Spacer(modifier = Modifier.height(12.dp))
-
-                            Text("🌾 Textura y Tipo de Suelo", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                            Text("🌾 Tipo de Suelo", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
                             Spacer(modifier = Modifier.height(8.dp))
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                listOf("Arcilloso", "Arenoso", "Limoso", "Mixto / Franco").forEach { textura ->
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                listOf("Arcilloso", "Arenoso", "Limoso", "Franco").forEach { textura ->
                                     val selected = texturaSeleccionada == textura
                                     Surface(
                                         shape = RoundedCornerShape(8.dp),
                                         color = if (selected) GreenPrimary else GreenChipBg,
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .clickable { texturaSeleccionada = textura }
+                                        modifier = Modifier.weight(1f).clickable {
+                                            texturaSeleccionada = textura
+                                            ParcelManager.updateActiveParcelData(soilType = textura)
+                                        }
                                     ) {
-                                        Text(
-                                            text = textura,
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = if (selected) Color.White else TextDark,
-                                            modifier = Modifier.padding(vertical = 8.dp),
-                                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                                        )
+                                        Text(textura, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = if (selected) Color.White else TextDark, modifier = Modifier.padding(vertical = 8.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                                     }
                                 }
                             }
@@ -390,47 +376,25 @@ fun HomeScreen(
 
             Button(
                 onClick = onNavigateToRecommendations,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(54.dp),
+                modifier = Modifier.fillMaxWidth().height(54.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = GreenPrimary),
                 shape = RoundedCornerShape(14.dp)
             ) {
                 Icon(Icons.Default.TravelExplore, contentDescription = null)
                 Spacer(modifier = Modifier.width(8.dp))
                 Text("Analizar Terreno y Ver Recomendaciones", fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                Spacer(modifier = Modifier.width(8.dp))
-                Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null)
             }
         }
     }
 }
 
 @SuppressLint("MissingPermission")
-private fun obtenerUbicacionGPSReal(
-    context: Context,
-    fusedClient: com.google.android.gms.location.FusedLocationProviderClient,
-    onResult: (Location?) -> Unit
-) {
+private fun obtenerUbicacionGPSReal(context: Context, fusedClient: com.google.android.gms.location.FusedLocationProviderClient, onResult: (Location?) -> Unit) {
     val cancelToken = CancellationTokenSource()
-
-    // 1. Intenta pedir la ubicación actual exacta en tiempo real encendiendo los sensores
-    fusedClient.getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, cancelToken.token)
-        .addOnSuccessListener { location ->
-            if (location != null) {
-                onResult(location)
-            } else {
-                // 2. Si es nulo, usa la última ubicación guardada como respaldo
-                fusedClient.lastLocation.addOnSuccessListener { lastLoc ->
-                    onResult(lastLoc)
-                }.addOnFailureListener {
-                    onResult(null)
-                }
-            }
-        }
-        .addOnFailureListener {
-            onResult(null)
-        }
+    fusedClient.getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, cancelToken.token).addOnSuccessListener { loc ->
+        if (loc != null) onResult(loc)
+        else fusedClient.lastLocation.addOnSuccessListener { lastLoc -> onResult(lastLoc) }.addOnFailureListener { onResult(null) }
+    }.addOnFailureListener { onResult(null) }
 }
 
 private fun determinarClimaPorAltitud(msnm: Double): String {
